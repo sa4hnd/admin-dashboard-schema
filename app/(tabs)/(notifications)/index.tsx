@@ -15,27 +15,33 @@ import { broadcastPush, fetchUsers, fetchPushTokens } from "@/lib/convex/api";
 import { colors, spacing, radius, typography } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Notification template storage key
-const NOTIFICATION_TEMPLATE_KEY = "vibracode_notification_template";
+// Broadcast-specific template key (separate from individual notification template)
+const BROADCAST_TEMPLATE_KEY = "vibracode_broadcast_template";
 
-const DEFAULT_NOTIFICATION_TEMPLATE = {
+// Default broadcast template - no placeholders since broadcast goes to everyone
+const DEFAULT_BROADCAST_TEMPLATE = {
   title: "Hey there! 👋",
   body: "We have something exciting to share with you. Check it out!",
 };
 
-// Note: For personalized notifications with {firstName}, use the individual
-// user notification feature. Broadcast sends the same message to all users.
-
-async function getNotificationTemplate(): Promise<typeof DEFAULT_NOTIFICATION_TEMPLATE> {
+async function getBroadcastTemplate(): Promise<typeof DEFAULT_BROADCAST_TEMPLATE> {
   try {
-    const stored = await AsyncStorage.getItem(NOTIFICATION_TEMPLATE_KEY);
+    const stored = await AsyncStorage.getItem(BROADCAST_TEMPLATE_KEY);
     if (stored) {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.log("Error reading notification template:", e);
+    console.log("Error reading broadcast template:", e);
   }
-  return DEFAULT_NOTIFICATION_TEMPLATE;
+  return DEFAULT_BROADCAST_TEMPLATE;
+}
+
+async function saveBroadcastTemplate(template: typeof DEFAULT_BROADCAST_TEMPLATE): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BROADCAST_TEMPLATE_KEY, JSON.stringify(template));
+  } catch (e) {
+    console.log("Error saving broadcast template:", e);
+  }
 }
 
 export default function NotificationsScreen() {
@@ -51,7 +57,7 @@ export default function NotificationsScreen() {
 
   // Load template on mount
   useEffect(() => {
-    getNotificationTemplate().then((template) => {
+    getBroadcastTemplate().then((template) => {
       setTitle(template.title);
       setBody(template.body);
     });
