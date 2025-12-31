@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Tabs } from "expo-router";
-import { Users, Layers, MessageSquare, CreditCard, Settings } from "lucide-react-native";
+import { Users, Layers, MessageSquare, CreditCard, Settings, Bell } from "lucide-react-native";
 import { colors, spacing, radius } from "@/constants/theme";
 
 export default function TabLayout() {
@@ -80,6 +80,17 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
               <CreditCard size={20} color={color} strokeWidth={focused ? 2.5 : 1.5} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="(notifications)"
+        options={{
+          title: "Notify",
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+              <Bell size={20} color={color} strokeWidth={focused ? 2.5 : 1.5} />
             </View>
           ),
         }}

@@ -28,6 +28,7 @@ import {
   Edit3,
   X,
   Check,
+  Bell,
 } from "lucide-react-native";
 import {
   fetchGlobalConfig,
@@ -60,6 +61,14 @@ Sehind Hemzani
 Founder, Vibracode
 
 P.S. Just hit reply - I'll see it directly.`,
+};
+
+// Notification template storage key and default
+const NOTIFICATION_TEMPLATE_KEY = "vibracode_notification_template";
+
+const DEFAULT_NOTIFICATION_TEMPLATE = {
+  title: "Hey {firstName}! 👋",
+  body: "We have something exciting to share with you. Check it out!",
 };
 
 // Config Card Component
@@ -286,9 +295,111 @@ function EmailTemplateModal({
   );
 }
 
+// Notification Template Editor Modal
+function NotificationTemplateModal({
+  visible,
+  template,
+  onSave,
+  onClose,
+}: {
+  visible: boolean;
+  template: typeof DEFAULT_NOTIFICATION_TEMPLATE;
+  onSave: (template: typeof DEFAULT_NOTIFICATION_TEMPLATE) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(template.title);
+  const [body, setBody] = useState(template.body);
+
+  useEffect(() => {
+    setTitle(template.title);
+    setBody(template.body);
+  }, [template]);
+
+  const handleSave = () => {
+    onSave({ title, body });
+    onClose();
+  };
+
+  const handleReset = () => {
+    Alert.alert(
+      "Reset to Default",
+      "Are you sure you want to reset the notification template to the default?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: () => {
+            setTitle(DEFAULT_NOTIFICATION_TEMPLATE.title);
+            setBody(DEFAULT_NOTIFICATION_TEMPLATE.body);
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.emailModalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Notification Template</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <X size={20} color={colors.text.tertiary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.emailModalBody} showsVerticalScrollIndicator={false}>
+            <Text style={styles.emailHint}>
+              This template is used for individual user notifications only. Placeholders are replaced with the user's info. For broadcast, use the Notify tab.
+            </Text>
+
+            <Text style={styles.emailLabel}>Title</Text>
+            <Text style={styles.emailHint}>
+              Use {"{firstName}"}, {"{lastName}"}, {"{fullName}"} as placeholders
+            </Text>
+            <TextInput
+              style={styles.emailSubjectInput}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Notification title..."
+              placeholderTextColor={colors.text.muted}
+              selectionColor={colors.accent.violet}
+            />
+
+            <Text style={styles.emailLabel}>Body</Text>
+            <TextInput
+              style={[styles.emailSubjectInput, { minHeight: 100 }]}
+              value={body}
+              onChangeText={setBody}
+              placeholder="Notification body..."
+              placeholderTextColor={colors.text.muted}
+              selectionColor={colors.accent.violet}
+              multiline
+              textAlignVertical="top"
+            />
+          </ScrollView>
+
+          <View style={styles.emailModalActions}>
+            <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
+              <Text style={styles.resetBtnText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accent.violet }]} onPress={handleSave}>
+              <Check size={16} color={colors.text.inverse} />
+              <Text style={styles.saveBtnText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function ConfigScreen() {
   const [emailTemplate, setEmailTemplate] = useState(DEFAULT_EMAIL_TEMPLATE);
   const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [notificationTemplate, setNotificationTemplate] = useState(DEFAULT_NOTIFICATION_TEMPLATE);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
 
   // Load email template on mount
   useEffect(() => {
@@ -301,6 +412,16 @@ export default function ConfigScreen() {
         }
       }
     });
+    // Load notification template
+    AsyncStorage.getItem(NOTIFICATION_TEMPLATE_KEY).then((stored) => {
+      if (stored) {
+        try {
+          setNotificationTemplate(JSON.parse(stored));
+        } catch (e) {
+          console.log("Error parsing notification template:", e);
+        }
+      }
+    });
   }, []);
 
   const handleSaveEmailTemplate = async (template: typeof DEFAULT_EMAIL_TEMPLATE) => {
@@ -310,6 +431,16 @@ export default function ConfigScreen() {
       Alert.alert("Success", "Email template saved successfully");
     } catch (e) {
       Alert.alert("Error", "Failed to save email template");
+    }
+  };
+
+  const handleSaveNotificationTemplate = async (template: typeof DEFAULT_NOTIFICATION_TEMPLATE) => {
+    try {
+      await AsyncStorage.setItem(NOTIFICATION_TEMPLATE_KEY, JSON.stringify(template));
+      setNotificationTemplate(template);
+      Alert.alert("Success", "Notification template saved successfully");
+    } catch (e) {
+      Alert.alert("Error", "Failed to save notification template");
     }
   };
 
@@ -415,6 +546,37 @@ export default function ConfigScreen() {
         </View>
       </Section>
 
+      {/* Notification Template Section */}
+      <Section
+        title="Notification Template"
+        icon={<Bell size={14} color={colors.accent.violet} />}
+      >
+        <View style={styles.emailTemplateCard}>
+          <View style={styles.emailTemplateHeader}>
+            <Text style={styles.emailTemplateSubject} numberOfLines={1}>
+              {notificationTemplate.title}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setNotificationModalVisible(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Edit3 size={16} color={colors.accent.violet} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.emailTemplateBody} numberOfLines={2}>
+            {notificationTemplate.body}
+          </Text>
+          <TouchableOpacity
+            style={[styles.editTemplateBtn, { backgroundColor: `${colors.accent.violet}15`, borderColor: `${colors.accent.violet}30` }]}
+            onPress={() => setNotificationModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Edit3 size={14} color={colors.accent.violet} />
+            <Text style={[styles.editTemplateBtnText, { color: colors.accent.violet }]}>Edit Template</Text>
+          </TouchableOpacity>
+        </View>
+      </Section>
+
       {/* Global Config Section */}
       <Section
         title="Global Config"
@@ -492,6 +654,14 @@ export default function ConfigScreen() {
       template={emailTemplate}
       onSave={handleSaveEmailTemplate}
       onClose={() => setEmailModalVisible(false)}
+    />
+
+    {/* Notification Template Modal */}
+    <NotificationTemplateModal
+      visible={notificationModalVisible}
+      template={notificationTemplate}
+      onSave={handleSaveNotificationTemplate}
+      onClose={() => setNotificationModalVisible(false)}
     />
   </>
   );

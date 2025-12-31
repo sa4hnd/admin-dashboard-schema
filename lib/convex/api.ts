@@ -152,9 +152,10 @@ export async function setUserPlan(
   subscriptionPlan: SubscriptionPlan,
   resetMessages = true
 ): Promise<boolean> {
-  const result = await adminPost("/admin/user/update", {
+  const result = await adminPost("/admin/user/plan", {
     userId,
-    updates: { subscriptionPlan, resetMessages }
+    subscriptionPlan,
+    resetMessages,
   });
   return result !== null;
 }
@@ -189,6 +190,62 @@ export async function updateSessionStatus(
     updates: { status },
   });
   return result !== null;
+}
+
+// Push Notification API functions
+export interface SendNotificationResult {
+  success: boolean;
+  sent?: number;
+  failed?: number;
+  error?: string;
+}
+
+export async function sendPushToUser(
+  clerkId: string,
+  title: string,
+  body: string
+): Promise<SendNotificationResult> {
+  const result = await adminPost<SendNotificationResult>("/admin/push/user", {
+    clerkId,
+    title,
+    body,
+  });
+  return result || { success: false, error: "Request failed" };
+}
+
+export async function broadcastPush(
+  title: string,
+  body: string
+): Promise<SendNotificationResult> {
+  const result = await adminPost<SendNotificationResult>("/admin/push/broadcast", {
+    title,
+    body,
+  });
+  return result || { success: false, error: "Request failed" };
+}
+
+export async function sendPushToUsers(
+  targetClerkIds: string[],
+  title: string,
+  body: string
+): Promise<SendNotificationResult> {
+  const result = await adminPost<SendNotificationResult>("/admin/push/send", {
+    targetClerkIds,
+    title,
+    body,
+  });
+  return result || { success: false, error: "Request failed" };
+}
+
+export interface PushToken {
+  clerkId: string;
+  token: string;
+  createdAt?: number;
+}
+
+export async function fetchPushTokens(): Promise<PushToken[]> {
+  const result = await adminGet<{ tokens: PushToken[] }>("/admin/push/tokens");
+  return result?.tokens || [];
 }
 
 export interface ResumeSandboxResult {

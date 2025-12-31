@@ -46,6 +46,7 @@ import {
   setUserPlan,
   deleteUser,
   truncateId,
+  sendPushToUser,
 } from "@/lib/convex/api";
 import type { User, SubscriptionPlan } from "@/lib/types/admin";
 import { colors, spacing, radius, typography } from "@/constants/theme";
@@ -85,6 +86,26 @@ async function getEmailTemplate(): Promise<typeof DEFAULT_EMAIL_TEMPLATE> {
     console.log("Error reading email template:", e);
   }
   return DEFAULT_EMAIL_TEMPLATE;
+}
+
+// Notification template storage key and default
+const NOTIFICATION_TEMPLATE_KEY = "vibracode_notification_template";
+
+const DEFAULT_NOTIFICATION_TEMPLATE = {
+  title: "Hey {firstName}! 👋",
+  body: "We have something exciting to share with you. Check it out!",
+};
+
+async function getNotificationTemplate(): Promise<typeof DEFAULT_NOTIFICATION_TEMPLATE> {
+  try {
+    const stored = await AsyncStorage.getItem(NOTIFICATION_TEMPLATE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.log("Error reading notification template:", e);
+  }
+  return DEFAULT_NOTIFICATION_TEMPLATE;
 }
 
 const PLAN_CONFIG: Record<string, { color: string; label: string }> = {
@@ -324,6 +345,122 @@ function PlanModal({
   );
 }
 
+// Notification Modal for sending push notification
+function NotificationModal({
+  visible,
+  user,
+  onClose,
+}: {
+  visible: boolean;
+  user: User;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  // Load template on mount
+  useEffect(() => {
+    if (visible) {
+      getNotificationTemplate().then((template) => {
+        const firstName = user.firstName || user.fullName?.split(" ")[0] || "there";
+        const lastName = user.lastName || "";
+        const fullName = user.fullName || firstName;
+
+        setTitle(
+          template.title
+            .replace(/{firstName}/g, firstName)
+            .replace(/{lastName}/g, lastName)
+            .replace(/{fullName}/g, fullName)
+        );
+        setBody(
+          template.body
+            .replace(/{firstName}/g, firstName)
+            .replace(/{lastName}/g, lastName)
+            .replace(/{fullName}/g, fullName)
+        );
+      });
+    }
+  }, [visible, user]);
+
+  const handleSend = async () => {
+    if (!title.trim() || !body.trim()) {
+      Alert.alert("Error", "Please enter both title and message");
+      return;
+    }
+
+    setIsSending(true);
+    const result = await sendPushToUser(user.clerkId, title, body);
+    setIsSending(false);
+
+    if (result.success) {
+      Alert.alert("Success", "Notification sent successfully!");
+      onClose();
+    } else {
+      Alert.alert("Error", result.error || "Failed to send notification");
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.notificationModalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Send Notification</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <X size={20} color={colors.text.tertiary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.notificationModalBody}>
+            <Text style={styles.notificationLabel}>Title</Text>
+            <TextInput
+              style={styles.notificationInput}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Notification title..."
+              placeholderTextColor={colors.text.muted}
+              selectionColor={colors.accent.sky}
+            />
+
+            <Text style={styles.notificationLabel}>Message</Text>
+            <TextInput
+              style={[styles.notificationInput, styles.notificationBodyInput]}
+              value={body}
+              onChangeText={setBody}
+              placeholder="Notification message..."
+              placeholderTextColor={colors.text.muted}
+              selectionColor={colors.accent.sky}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+
+          <View style={styles.notificationModalActions}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sendBtn, isSending && styles.sendBtnDisabled]}
+              onPress={handleSend}
+              disabled={isSending}
+            >
+              {isSending ? (
+                <ActivityIndicator size="small" color={colors.text.inverse} />
+              ) : (
+                <>
+                  <Bell size={16} color={colors.text.inverse} />
+                  <Text style={styles.sendBtnText}>Send</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function UserDetailScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
@@ -336,6 +473,7 @@ export default function UserDetailScreen() {
     field: "credits" | "messages" | null;
   }>({ visible: false, title: "", value: "", field: null });
   const [planModalVisible, setPlanModalVisible] = useState(false);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [emailTemplate, setEmailTemplate] = useState(DEFAULT_EMAIL_TEMPLATE);
 
@@ -444,16 +582,33 @@ export default function UserDetailScreen() {
       .replace(/{fullName}/g, fullName)
       .replace(/{email}/g, user.email);
 
-    // Create Gmail URL
+    // Create URLs - note: email address should not be encoded in mailto
     const gmailUrl = `googlegmail://co?to=${encodeURIComponent(user.email)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    const mailtoUrl = `mailto:${encodeURIComponent(user.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const mailtoUrl = `mailto:${user.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    // Try Gmail first, fall back to default mail
-    const canOpenGmail = await Linking.canOpenURL(gmailUrl);
-    if (canOpenGmail) {
-      await Linking.openURL(gmailUrl);
-    } else {
-      await Linking.openURL(mailtoUrl);
+    try {
+      // Try Gmail first, fall back to default mail
+      const canOpenGmail = await Linking.canOpenURL(gmailUrl);
+      if (canOpenGmail) {
+        await Linking.openURL(gmailUrl);
+      } else {
+        const canOpenMail = await Linking.canOpenURL(mailtoUrl);
+        if (canOpenMail) {
+          await Linking.openURL(mailtoUrl);
+        } else {
+          Alert.alert(
+            "No Email App",
+            "No email app is configured on this device. Please copy the email address and send manually.",
+            [
+              { text: "Copy Email", onPress: () => {} },
+              { text: "OK" },
+            ]
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error opening email:", error);
+      Alert.alert("Error", "Failed to open email app. Please try again.");
     }
   };
 
@@ -709,6 +864,18 @@ export default function UserDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Send Notification Button - only show if user has push token */}
+        {user.pushToken && (
+          <TouchableOpacity
+            style={styles.notificationBtn}
+            onPress={() => setNotificationModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Bell size={16} color={colors.accent.violet} />
+            <Text style={styles.notificationBtnText}>Send Notification</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Delete Button */}
         <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteUser} activeOpacity={0.7}>
           <Trash2 size={16} color={colors.accent.rose} />
@@ -738,6 +905,15 @@ export default function UserDetailScreen() {
         onSave={handleSavePlan}
         onClose={() => setPlanModalVisible(false)}
       />
+
+      {/* Notification Modal */}
+      {user && (
+        <NotificationModal
+          visible={notificationModalVisible}
+          user={user}
+          onClose={() => setNotificationModalVisible(false)}
+        />
+      )}
     </>
   );
 }
@@ -931,6 +1107,22 @@ const styles = StyleSheet.create({
     ...typography.bodyMedium,
     color: colors.accent.sky,
   },
+  notificationBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.accent.violet}15`,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.lg,
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: `${colors.accent.violet}30`,
+  },
+  notificationBtnText: {
+    ...typography.bodyMedium,
+    color: colors.accent.violet,
+  },
   deleteBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1055,5 +1247,71 @@ const styles = StyleSheet.create({
   },
   planOptionTextSelected: {
     color: colors.text.primary,
+  },
+  // Notification Modal Styles
+  notificationModalContainer: {
+    backgroundColor: colors.bg.secondary,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    maxHeight: "80%",
+  },
+  notificationModalBody: {
+    padding: spacing.xl,
+  },
+  notificationLabel: {
+    ...typography.overline,
+    color: colors.text.muted,
+    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+  },
+  notificationInput: {
+    backgroundColor: colors.bg.primary,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    ...typography.body,
+    color: colors.text.primary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  notificationBodyInput: {
+    minHeight: 100,
+  },
+  notificationModalActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.xl,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.subtle,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.bg.tertiary,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  cancelBtnText: {
+    ...typography.bodyMedium,
+    color: colors.text.secondary,
+  },
+  sendBtn: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent.violet,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  sendBtnDisabled: {
+    opacity: 0.6,
+  },
+  sendBtnText: {
+    ...typography.bodyMedium,
+    color: colors.text.inverse,
   },
 });
